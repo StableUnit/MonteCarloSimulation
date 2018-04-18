@@ -17,16 +17,16 @@ class Params:
         demand_volatility (float): SU Monte Carlo std in demand.
     """
     def __init__(self):
-        self.total_steps = 100000
-        self.initial_reserve_ratio = 0.1
+        self.total_steps = 100
+        self.initial_reserve_ratio = 1.0
         self.minimum_reserve_ratio = 0.05
         self.eth_drift = 0.0
-        self.eth_volatility = 0.0001
+        self.eth_volatility = 0.0
         self.initial_eth_reserve  = 100
         self.initial_eth_price  = 500
-        self.demand_drift = 0.0
+        self.demand_drift = -0.001
         self.demand_volatility = 0.001
-
+        self.print_step = True
 
 class State:
     """State holds the current and historical values associated with a trial.
@@ -47,7 +47,7 @@ class State:
                 params (Class): object carrying hyperparams for trial.
         """
         self.steps = [0]
-        self.eth_reserve = [params.initial_reserve_ratio]
+        self.eth_reserve = [params.initial_eth_reserve]
         self.eth_prices =  [params.initial_eth_price]
         self.eth_reserve_value = \
             [params.initial_eth_reserve * params.initial_eth_price]
@@ -57,8 +57,16 @@ class State:
                 params.initial_eth_price * 1 / params.initial_reserve_ratio]
         self.bond_circulation = [0]
 
+    def check_state(self):
+        if (self.eth_reserve[-1] < 0 or
+            self.su_circulation[-1] < 0 or
+            self.bond_circulation[-1] < 0 or
+            self.eth_prices[-1] < 0):
+            return False
+        return True
+
 def plot(state):
-    """ Produces a plot state plot.
+    """ Produces a plot of the MCS.
         Args:
             state (Class): Object containing the contract's state through time.
     """
@@ -109,8 +117,7 @@ def do_step(params, state):
     # Change in stable unit demand is modeled using a lognormal distribution.
     # This scews demand in the positive direction towards infinity while
     # bounding the potential demand shock below by zero. This reflects the
-    # potential for inifinite buying demand and while the amound of sell
-    # pressure is bounded below.
+    # potential for inifinite buying demand and finite sell pressure.
     su_demand_delta = np.random.lognormal(params.demand_drift, \
             params.demand_volatility, 1)[0] - 1
     state.su_cumulative_demand.append(state.su_cumulative_demand[-1] + \
@@ -121,8 +128,8 @@ def do_step(params, state):
     circulation_delta = su_demand_delta * state.su_circulation[-1]
 
     # In the event of an expansion, SU supply is expanded through two processes
-    # 1) SU Bonds purchased earlier are exchanged for ethereum from previous
-    # sellers. 2) New stable units are minted.
+    # 1) SU Bonds purchased earlier are redeemed
+    # 2) New stable units are minted.
     if circulation_delta >= 0:
         # SU circulation is expanded with demand.
         su_circulation_delta = circulation_delta
@@ -135,7 +142,7 @@ def do_step(params, state):
         eth_reserve_delta = (1 /state.eth_prices[-1]) * (circulation_delta + \
                 bond_circulation_delta)
 
-    # In the event of a depression where the reserve has dropped bellow it's
+    # If we are contracting and the reserve ratio has dropped bellow it's
     # lower bound the contract issues bonds using a reverse dutch auction.
     # These can be redeemed at a later date for ethereum during expansion.
     elif state.reserve_ratio[-1] < params.minimum_reserve_ratio:
@@ -158,7 +165,8 @@ def do_step(params, state):
         bond_circulation_delta = 0
 
         # The contract buys back stable units at market the rate.
-        eth_reserve_delta = su_circulation_delta * (1 / state.eth_prices[-1])
+        eth_reserve_delta = (-1) * su_circulation_delta * (1 / state.eth_prices[-1]) *\
+                (1 / 0.99)
 
     # Update primary contract state params.
     state.su_circulation.append(state.su_circulation[-1] + su_circulation_delta)
@@ -171,6 +179,23 @@ def do_step(params, state):
     state.reserve_ratio.append(state.eth_reserve_value[-1] / \
             state.su_circulation[-1])
     state.steps.append(state.steps[-1] + 1)
+
+    if params.print_step:
+        print(  'step', "%0.0f" % state.steps[-1], \
+                'demand_delta',"%0.2f" % circulation_delta, \
+                'su_delta', "%0.2f" % su_circulation_delta, \
+                'su_total', "%0.2f" % state.su_circulation[-1], \
+                'bond_delta', "%0.2f" % bond_circulation_delta, \
+                'bond_total', "%0.2f" % state.bond_circulation[-1], \
+                'eth_delta', "%0.4f" % eth_reserve_delta, \
+                'eth_total', "%0.4f" % state.eth_reserve[-1], \
+                'eth_value', "%0.4f" % state.eth_reserve_value[-1], \
+                'reserve_ratio', "%0.4f" % state.reserve_ratio[-1])
+
+    if state.check_state() == False:
+        parms.print_step = True
+        print ('Error in State')
+        assert(False)
 
     return state
 
