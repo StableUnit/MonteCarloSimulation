@@ -22,7 +22,7 @@ gflags.DEFINE_float('initial_btc_price', 8000,
         'BTC Initial price.')
 gflags.DEFINE_float('demand_drift', 0.001,
         'SU Monte Carlo drift in demand.')
-gflags.DEFINE_float('demand_volatility', 0.0001,
+gflags.DEFINE_float('demand_volatility', 0.00001,
         'SU Monte Calro standard deviation.')
 gflags.DEFINE_float('lowest_ask', 1.01,
         'The contract spread above the dollar.')
@@ -125,12 +125,6 @@ def plot(state):
     plt.ylabel('Reserve Ratio')
     plt.grid(True)
 
-    print ('SU: ', state.su_circulation[-1])
-    print ('BTC: ', state.btc_reserve[-1])
-    print ('BTCv: ', state.btc_reserve_value[-1])
-    print ('R: ', state.reserve_ratio[-1])
-    print ('CD: ', state.su_cumulative_demand[-1])
-
     plt.show()
 
 
@@ -175,7 +169,7 @@ def do_step(params, state):
         su_circulation_delta = circulation_delta
 
         # The contracts reserve is depleted as it buys back stable units.
-        btc_reserve_delta = (-1) * su_circulation_delta * \
+        btc_reserve_delta =  su_circulation_delta * \
                 (1 / state.btc_prices[-1]) * (1 / params.highest_bid)
 
 
@@ -188,25 +182,28 @@ def do_step(params, state):
     # Here we will rebase the Stable Unit supply in response to reserve ratio
     # increase above some threshold. This is payed directly to token holders
     # through direct increases in account values.
+    su_rebase_delta = 0
     off_factor = (reserve_ratio - params.target_reserve_ratio) / reserve_ratio
     if off_factor > 0:
-        su_circulation = su_circulation * (1 + off_factor)
-        su_circulation_delta = su_circulation - state.su_circulation[-1]
+        su_rebase_delta = su_circulation * (1 + off_factor) - su_circulation
+        su_circulation = su_circulation + su_rebase_delta
 
     # Update State.
     state.su_circulation.append(su_circulation)
     state.su_cumulative_demand.append(su_cumulative_demand)
     state.btc_prices.append(btc_price)
     state.btc_reserve.append(btc_reserve)
-    state.btc_reserve_value.append(state.btc_reserve_value)
+    state.btc_reserve_value.append(btc_reserve_value)
     state.reserve_ratio.append(reserve_ratio)
     state.steps.append(state.steps[-1] + 1)
 
     if params.print_step or state.steps[-1] == params.total_steps:
         print(  'step', "%0.0f" % state.steps[-1], \
                 'su_total', "%0.2f" % su_circulation, \
-                'demand_delta',"%0.2f" % circulation_delta, \
+                'su_demand_delta',"%0.4f" % su_demand_delta, \
+                'su_circulation_delta' , "%0.2f" % circulation_delta, \
                 'su_delta', "%0.2f" % su_circulation_delta, \
+                'su_rebase_delta', "%0.2f" % su_rebase_delta, \
                 'btc_total', "%0.4f" % btc_reserve, \
                 'btc_delta', "%0.4f" % btc_reserve_delta, \
                 'btc_value', "%0.4f" % btc_reserve_value, \
