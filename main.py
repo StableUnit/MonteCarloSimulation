@@ -1,5 +1,35 @@
+from google.apputils import app
 import matplotlib.pyplot as plt
 import numpy as np
+
+import gflags
+
+FLAGS = gflags.FLAGS
+
+gflags.DEFINE_integer('total_steps', 100,
+        'The total number of steps per trial')
+gflags.DEFINE_float('initial_reserve_ratio', 1.0,
+        'the initial ratio between Bitcoin and Stable Units.')
+gflags.DEFINE_float('target_reserve_ratio', 0.5,
+        'The reserve ratio targeted by the contract')
+gflags.DEFINE_float('btc_drift', 0.0,
+        'BTC Monte Carlo mean')
+gflags.DEFINE_float('btc_volatility', 0.001,
+        'BTC Monte Carlo mean.')
+gflags.DEFINE_float('initial_btc_reserve', 100,
+        'Initial amount of BTC held in reserve.')
+gflags.DEFINE_float('initial_btc_price', 8000,
+        'BTC Initial price.')
+gflags.DEFINE_float('demand_drift', 0.001,
+        'SU Monte Carlo drift in demand.')
+gflags.DEFINE_float('demand_volatility', 0.0001,
+        'SU Monte Calro standard deviation.')
+gflags.DEFINE_float('lowest_ask', 1.01,
+        'The contract spread above the dollar.')
+gflags.DEFINE_float('highest_bid', 0.99,
+        'The contract spread below the dollar.')
+gflags.DEFINE_boolean('print_step', True,
+        'Logging On or Off.')
 
 class Params:
     """Params hold a set of hyper parameters relevant to a simulation trial.
@@ -8,7 +38,7 @@ class Params:
         total_steps (int): The total number of steps per trial.
         initial_reserve_ratio (float): The ratio initial between Bitcoin and
             Stable units.
-        minimum_reserve_ratio (float): A limit ratio between BTC and SU.
+        target_reserve_ratio (float): The reserve ratio targeted by the contract
         btc_drift (float): BTC Monte Carlo distribution mean.
         btc_volatility (float): BTC Monte Carlo standard deviation.
         initial_btc_reserve (float): Initial Bitcoin reserve size.
@@ -19,18 +49,20 @@ class Params:
         highest_bid (float): The contract spread bellow 1 dollar.
     """
     def __init__(self):
-        self.total_steps = 10000
-        self.initial_reserve_ratio = 1.0
-        self.minimum_reserve_ratio = 0.5
-        self.btc_drift = 0.0
-        self.btc_volatility = 0.001
-        self.initial_btc_reserve  = 100
-        self.initial_btc_price  = 8000
-        self.demand_drift = 0.000
-        self.demand_volatility = 0.001
-        self.lowest_ask = 1.01
-        self.highest_bid = 0.99
-        self.print_step = True
+        self.total_steps = FLAGS.total_steps
+        self.initial_reserve_ratio = FLAGS.initial_reserve_ratio
+        self.target_reserve_ratio = FLAGS.target_reserve_ratio
+        self.btc_drift = FLAGS.btc_drift
+        self.btc_volatility = FLAGS.btc_volatility
+        self.initial_btc_reserve  = FLAGS.initial_btc_reserve
+        self.initial_btc_price  = FLAGS.initial_btc_price
+        self.demand_drift = FLAGS.demand_drift
+        self.demand_volatility = FLAGS.demand_volatility
+        self.lowest_ask = FLAGS.lowest_ask
+        self.highest_bid = FLAGS.highest_bid
+        self.print_step = FLAGS.print_step
+
+
 
 class State:
     """State holds the current and historical values associated with a trial.
@@ -44,7 +76,6 @@ class State:
         su_cumulative_demand (list[float]): Cumulative density of Stable unit
             demand at each step.
         su_circulation (list[float]): Total SU in circulation per step.
-        bond_circulation (list[float]): Total bond pool size per step.
     """
     def __init__(self, params):
         """ Args:
@@ -59,12 +90,10 @@ class State:
         self.su_cumulative_demand = [0.0]
         self.su_circulation = [params.initial_btc_reserve * \
                 params.initial_btc_price * 1 / params.initial_reserve_ratio]
-        self.bond_circulation = [0]
 
     def check_state(self):
         if (self.btc_reserve[-1] < 0 or
             self.su_circulation[-1] < 0 or
-            self.bond_circulation[-1] < 0 or
             self.btc_prices[-1] < 0):
             return False
         return True
@@ -87,13 +116,12 @@ def plot(state):
     plt.subplot(4, 1, 3)
     plt.plot(state.steps, state.btc_reserve_value, color="b")
     plt.plot(state.steps, state.su_circulation, color="g")
-    plt.plot(state.steps, state.bond_circulation, color="r")
     plt.ylabel('USD')
     plt.grid(True)
 
     plt.subplot(4, 1, 4)
     plt.plot(state.steps, state.reserve_ratio, color="b")
-    plt.ylabel('BTC / SU')
+    plt.ylabel('Reserve Ratio')
     plt.grid(True)
 
     print ('SU: ', state.su_circulation[-1])
@@ -131,66 +159,38 @@ def do_step(params, state):
     # change in demand.
     circulation_delta = su_demand_delta * state.su_circulation[-1]
 
-    # In the event of an expansion, SU supply is expanded through two processes
-    # 1) SU Bonds purchased earlier are redeemed
-    # 2) New stable units are minted.
+    # SUs are being minted from the smart contract in exchange for Bitcoin.
     if circulation_delta >= 0:
         # SU circulation is expanded with demand.
         su_circulation_delta = circulation_delta
 
-        # Bonds purchased earlier are exchanged for ethereum.
-        bond_circulation_delta = -min(state.bond_circulation[-1], \
-                circulation_delta)
-
         # The bitcoin reserve is credited with the new sale of stable units.
-        btc_reserve_delta = (1 /state.btc_prices[-1]) * (circulation_delta + \
-                bond_circulation_delta) * (params.lowest_ask)
+        btc_reserve_delta = (1 /state.btc_prices[-1]) * circulation_delta * \
+                (params.lowest_ask)
 
-    # If we are contracting and the reserve ratio has dropped below it's
-    # lower bound the contract issues bonds using a reverse dutch auction.
-    # These can be redeemed at a later date during expansion.
-    elif state.reserve_ratio[-1] < params.minimum_reserve_ratio:
-        # Stable units are sold off in exchange for bonds.
-        su_circulation_delta = circulation_delta
-
-        # Instead the contract issues bonds which redeem ethereum at a later
-        # date.
-        bond_circulation_delta = -circulation_delta
-
-        # The bitcoin reserve is protected by bond sales.
-        btc_reserve_delta = 0
-
-    # In the event of a depression within the reserve ratio bound, the contract
-    # buys su in circulation in exchange for ethereum held in reserve.
+    # SUs are being sold to the contract in exchange for Bitcoin.
     else:
-        # The stable unit circulation is decreased
+        # SU circulation is decreased in response to a loss of demand.
         su_circulation_delta = circulation_delta
 
-        bond_circulation_delta = 0
-
-        # The contract buys back stable units at the profit.
+        # The contracts reserve is depleted as it buys back stable units.
         btc_reserve_delta = (-1) * su_circulation_delta * \
                 (1 / state.btc_prices[-1]) * (1 / params.highest_bid)
 
-    # Update primary contract state params.
+    # Update State Params.
     state.su_circulation.append(state.su_circulation[-1] + su_circulation_delta)
-    state.bond_circulation.append(state.bond_circulation[-1] + \
-            bond_circulation_delta)
     state.btc_reserve.append(state.btc_reserve[-1] + btc_reserve_delta)
-
-    # Update secondary and misc params.
     state.btc_reserve_value.append(state.btc_reserve[-1] * state.btc_prices[-1])
     state.reserve_ratio.append(state.btc_reserve_value[-1] / \
             state.su_circulation[-1])
     state.steps.append(state.steps[-1] + 1)
+
 
     if params.print_step:
         print(  'step', "%0.0f" % state.steps[-1], \
                 'demand_delta',"%0.2f" % circulation_delta, \
                 'su_delta', "%0.2f" % su_circulation_delta, \
                 'su_total', "%0.2f" % state.su_circulation[-1], \
-                'bond_delta', "%0.2f" % bond_circulation_delta, \
-                'bond_total', "%0.2f" % state.bond_circulation[-1], \
                 'btc_delta', "%0.4f" % btc_reserve_delta, \
                 'btc_total', "%0.4f" % state.btc_reserve[-1], \
                 'btc_value', "%0.4f" % state.btc_reserve_value[-1], \
@@ -209,8 +209,8 @@ def run_trial(params):
         state = do_step(params, state)
     plot(state)
 
-def main():
+def main(argv):
     run_trial(Params())
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+  app.run()

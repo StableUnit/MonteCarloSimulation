@@ -1,2 +1,4 @@
 numpy
 matplotlib
+python-gflags
+google-apputils
