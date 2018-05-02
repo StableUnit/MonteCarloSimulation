@@ -3,65 +3,95 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import gflags
+import math
 
 FLAGS = gflags.FLAGS
 
-gflags.DEFINE_integer('total_steps', 100,
+# Simulation Paramters.
+gflags.DEFINE_integer('total_trials', 1000,
+        'The total number of trials per experiment')
+gflags.DEFINE_integer('total_steps', 1000,
         'The total number of steps per trial')
+gflags.DEFINE_boolean('print_step', False,
+        'Logging On or Off.')
+
+# Brownian Motion Parameters.
+gflags.DEFINE_float('delta_t', 1.0,
+        'GBM time delta')
+gflags.DEFINE_float('btc_price_drift', 0.0,
+        'BTC Monte Carlo GBM price drift.')
+gflags.DEFINE_float('btc_price_volatility', 0.001,
+        'BTC Monte Carlo GBM price volatility')
+gflags.DEFINE_float('su_demand_drift', 0.0,
+        'SU Monte Carlo GBM demand drift.')
+gflags.DEFINE_float('su_demand_volatility', 0.001,
+        'SU Monte Carlo GBM demand volatility.')
+
+# Contract Parameters.
 gflags.DEFINE_float('initial_reserve_ratio', 1.0,
         'the initial ratio between Bitcoin and Stable Units.')
 gflags.DEFINE_float('target_reserve_ratio', 1.0,
         'The reserve ratio targeted by the contract')
-gflags.DEFINE_float('btc_drift', 0.0,
-        'BTC Monte Carlo mean')
-gflags.DEFINE_float('btc_volatility', 0.001,
-        'BTC Monte Carlo mean.')
 gflags.DEFINE_float('initial_btc_reserve', 100,
         'Initial amount of BTC held in reserve.')
 gflags.DEFINE_float('initial_btc_price', 8000,
         'BTC Initial price.')
-gflags.DEFINE_float('demand_drift', 0.001,
-        'SU Monte Carlo drift in demand.')
-gflags.DEFINE_float('demand_volatility', 0.00001,
-        'SU Monte Calro standard deviation.')
 gflags.DEFINE_float('lowest_ask', 1.01,
         'The contract spread above the dollar.')
 gflags.DEFINE_float('highest_bid', 0.99,
         'The contract spread below the dollar.')
-gflags.DEFINE_boolean('print_step', True,
-        'Logging On or Off.')
+gflags.DEFINE_boolean('do_rebase', False,
+        'The contract rebases supply after each step')
 
 class Params:
     """Params hold a set of hyper parameters relevant to a simulation trial.
 
     Attributes:
         total_steps (int): The total number of steps per trial.
+        btc_price_drift (float): BTC Monte Carlo GBM price drift.
+        btc_price_volatility (float): BTC Monte Carlo GBM price volatility.
+        su_demand_drift (float): SU Monte Carlo GBM demand drift.
+        su_demand_volatility (float): SU Monte Carlo std demand volatility.
         initial_reserve_ratio (float): The ratio initial between Bitcoin and
             Stable units.
         target_reserve_ratio (float): The reserve ratio targeted by the contract
-        btc_drift (float): BTC Monte Carlo distribution mean.
-        btc_volatility (float): BTC Monte Carlo standard deviation.
         initial_btc_reserve (float): Initial Bitcoin reserve size.
         initial_btc_price (float): Initial Bitcoin price per unit.
-        demand_drift (float): SU Monte Carlo drift in demand.
-        demand_volatility (float): SU Monte Carlo std in demand.
         lowest_ask (float): The contract spread above 1 dollar.
         highest_bid (float): The contract spread bellow 1 dollar.
     """
     def __init__(self):
         self.total_steps = FLAGS.total_steps
+        self.total_trials = FLAGS.total_trials
+        self.delta_t = FLAGS.delta_t
+        self.btc_price_drift = FLAGS.btc_price_drift
+        self.btc_price_volatility = FLAGS.btc_price_volatility
+        self.su_demand_drift = FLAGS.su_demand_drift
+        self.su_demand_volatility = FLAGS.su_demand_volatility
         self.initial_reserve_ratio = FLAGS.initial_reserve_ratio
         self.target_reserve_ratio = FLAGS.target_reserve_ratio
-        self.btc_drift = FLAGS.btc_drift
-        self.btc_volatility = FLAGS.btc_volatility
         self.initial_btc_reserve  = FLAGS.initial_btc_reserve
         self.initial_btc_price  = FLAGS.initial_btc_price
-        self.demand_drift = FLAGS.demand_drift
-        self.demand_volatility = FLAGS.demand_volatility
         self.lowest_ask = FLAGS.lowest_ask
         self.highest_bid = FLAGS.highest_bid
+        self.do_rebase = FLAGS.do_rebase
         self.print_step = FLAGS.print_step
 
+    def __str__(self):
+        return (' total steps: ' + "%0.2f" % self.total_steps + '\n' + \
+                ' total trials: ' + "%0.2f" % self.total_trials + '\n' + \
+    ' delta t: ' + "%0.4f" % self.delta_t + '\n' + \
+    ' btc price drift: ' + "%0.4f" % self.btc_price_drift + '\n' + \
+    ' btc price volatility: ' + "%0.4f" % self.btc_price_volatility + '\n' + \
+    ' su demand drift: ' + "%0.4f" % self.su_demand_drift + '\n' + \
+    ' su demand volatility: ' + "%0.4f" % self.su_demand_volatility + '\n' + \
+    ' initial reserve ratio: '+"%0.4f" % self.initial_reserve_ratio + '\n' + \
+    ' initial btc reserve: ' + "%0.4f" % self.initial_btc_reserve + '\n' + \
+    ' initial btc price: ' + "%0.4f" % self.initial_btc_price + '\n' + \
+    ' lowest ask: ' + "%0.3f" % self.lowest_ask + '\n' + \
+    ' highest bid: ' + "%0.3f" % self.highest_bid + '\n' + \
+    ' do rebase: ' + str(self.do_rebase) + '\n' + \
+    ' print step: ' + str(self.print_step))
 
 
 class State:
@@ -91,12 +121,53 @@ class State:
         self.su_circulation = [params.initial_btc_reserve * \
                 params.initial_btc_price * 1 / params.initial_reserve_ratio]
 
-    def check_state(self):
-        if (self.btc_reserve[-1] < 0 or
-            self.su_circulation[-1] < 0 or
-            self.btc_prices[-1] < 0):
-            return False
-        return True
+    def __str__(self):
+        return 'step ' + "%0.0f" % self.steps[-1] +\
+               ' su_total ' + "%0.2f" % self.su_circulation[-1] + \
+               ' btc_total ' + "%0.4f" % self.btc_reserve[-1] + \
+               ' btc_price ' + "%0.4f" % self.btc_prices[-1] + \
+               ' btc_value ' + "%0.4f" % self.btc_reserve_value[-1] + \
+               ' reserve_ratio ' + "%0.4f" % self.reserve_ratio[-1]
+
+def do_analysis(end_states, params):
+    # Build results.
+    reserve_ratio = []
+    su_circulation = []
+    btc_price = []
+    for state in end_states:
+        reserve_ratio.append(state.reserve_ratio[-1])
+        su_circulation.append((state.su_circulation[-1] - \
+                state.su_circulation[0]) / state.su_circulation[0] )
+        btc_price.append((state.btc_prices[-1] - \
+                state.btc_prices[0]) / state.btc_prices[0])
+
+    # Produce Result Plot
+    f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(10, 10))
+    experiment_string = params.__str__()
+
+    # Plot Params.
+    props = dict(boxstyle='round', facecolor='white', alpha=0.0)
+    ax1.text(0.05, 0.95, experiment_string, transform=ax1.transAxes, fontsize=14,
+        verticalalignment='top', bbox=props)
+    ax1.get_xaxis().set_visible(False)
+    ax1.get_yaxis().set_visible(False)
+    ax1.axis('off')
+    ax1.set_title('Experiment Params')
+
+    # Final Reserve Ratio Histogram.
+    ax2.hist(reserve_ratio, bins=int(math.sqrt(params.total_trials)))
+    ax2.set_title("Reserve Ratio at trial end.")
+
+    # Final Stable Circulation.
+    ax3.hist(su_circulation, bins=int(math.sqrt(params.total_trials)))
+    ax3.set_title("% Stable Unit Circulation off base.")
+
+    # Final Stable Circulation.
+    ax4.hist(btc_price, bins=int(math.sqrt(params.total_trials)))
+    ax4.set_title("% BTC Price Drift off base.")
+
+    plt.show()
+
 
 def plot(state):
     """ Produces a plot of the MCS.
@@ -134,16 +205,20 @@ def do_step(params, state):
             params (Class): Object containing the contract hyperparameters.
             state (Class): Object containing the contract's current state.
     """
-    # Determine the Bitcoin demand delta.
-    btc_demand_delta = np.random.lognormal(params.btc_drift, \
-            params.btc_volatility, 1)[0] - 1
+    # Bitcoin price delta using Geometric Brownian motion (GBM).
+    btc_price_delta = state.btc_prices[-1] * \
+        (params.btc_price_drift * params.delta_t + \
+         params.btc_price_volatility * math.sqrt(params.delta_t) * \
+         np.random.standard_normal())
 
-    # Update the Bitcoin Price.
-    btc_price = state.btc_prices[-1] + state.btc_prices[-1] * btc_demand_delta
+    # Next Bitcoin price.
+    btc_price = state.btc_prices[-1] + btc_price_delta
 
-    # Determine the Stable unit demand delta.
-    su_demand_delta = np.random.lognormal(params.demand_drift, \
-            params.demand_volatility, 1)[0] - 1
+    # Stable Unit demand using GBM.
+    su_demand_delta = state.su_circulation[-1] * \
+            (params.su_demand_drift * params.delta_t + \
+             params.su_demand_volatility * math.sqrt(params.delta_t) * \
+             np.random.standard_normal())
 
     # Update the Stable Unit CDF
     su_cumulative_demand = state.su_cumulative_demand[-1] + su_demand_delta
@@ -151,7 +226,7 @@ def do_step(params, state):
     # At each step we model the change in SU circulation with respect to the
     # change in demand: dSU = dD * SU.
     # TODO(const) Model demand brake from arbitragers in secondary markets.
-    circulation_delta = su_demand_delta * state.su_circulation[-1]
+    circulation_delta = su_demand_delta
 
     # Below: Simulate the contract buy-sell behavior outside the spread.
     # SUs are being minted from the smart contract in exchange for Bitcoin.
@@ -172,21 +247,18 @@ def do_step(params, state):
         btc_reserve_delta =  su_circulation_delta * \
                 (1 / state.btc_prices[-1]) * (1 / params.highest_bid)
 
-
     # Updated State Params.
     su_circulation = state.su_circulation[-1] + su_circulation_delta
     btc_reserve = state.btc_reserve[-1] + btc_reserve_delta
     btc_reserve_value = btc_reserve * btc_price
     reserve_ratio = btc_reserve_value / su_circulation
 
-    # Here we will rebase the Stable Unit supply in response to reserve ratio
-    # increase above some threshold. This is payed directly to token holders
-    # through direct increases in account values.
     su_rebase_delta = 0
-    off_factor = (reserve_ratio - params.target_reserve_ratio) / reserve_ratio
-    if off_factor > 0:
-        su_rebase_delta = su_circulation * (1 + off_factor) - su_circulation
-        su_circulation = su_circulation + su_rebase_delta
+    if params.do_rebase:
+        off_factor = (reserve_ratio-params.target_reserve_ratio) / reserve_ratio
+        if off_factor > 0:
+            su_rebase_delta = su_circulation * (1 + off_factor) - su_circulation
+            su_circulation = su_circulation + su_rebase_delta
 
     # Update State.
     state.su_circulation.append(su_circulation)
@@ -197,7 +269,7 @@ def do_step(params, state):
     state.reserve_ratio.append(reserve_ratio)
     state.steps.append(state.steps[-1] + 1)
 
-    if params.print_step or state.steps[-1] == params.total_steps:
+    if params.print_step:
         print(  'step', "%0.0f" % state.steps[-1], \
                 'su_total', "%0.2f" % su_circulation, \
                 'su_demand_delta',"%0.4f" % su_demand_delta, \
@@ -205,24 +277,41 @@ def do_step(params, state):
                 'su_delta', "%0.2f" % su_circulation_delta, \
                 'su_rebase_delta', "%0.2f" % su_rebase_delta, \
                 'btc_total', "%0.4f" % btc_reserve, \
+                'btc_price', "%0.4f" % btc_price, \
+                'btc_price_delta', "%0.4f" % btc_price_delta, \
                 'btc_delta', "%0.4f" % btc_reserve_delta, \
                 'btc_value', "%0.4f" % btc_reserve_value, \
                 'reserve_ratio', "%0.4f" % reserve_ratio)
 
-    if state.check_state() == False:
-        print ('Error in State')
-        assert(False)
 
     return state
 
+def should_end_trial(params, state):
+    if (state.btc_reserve[-1] < 0):
+        return True
+    elif (state.su_circulation[-1] < 0):
+        return True
+    elif (state.steps[-1] >= params.total_steps):
+        return True
+    else:
+        return False
+
 def run_trial(params):
     state = State(params)
-    for _ in xrange(0, params.total_steps):
+    while not should_end_trial(params, state):
         state = do_step(params, state)
-    plot(state)
+    return state
+
+def run_experiment(params):
+    results = []
+    for trial in xrange(0, params.total_trials):
+        results.append(run_trial(params))
+    do_analysis(results, params)
 
 def main(argv):
-    run_trial(Params())
+    params = Params()
+    print params
+    run_experiment(params)
 
 if __name__ == '__main__':
   app.run()
