@@ -7,6 +7,20 @@ import math
 
 FLAGS = gflags.FLAGS
 
+'''
+    This file application runs a Geometric Brownian Motion simulation over
+two indices: 1) The bitcoin price, parameterized by a drift and volatility
+and 2) Stable Unit demand change, parameterized by a drift and volatility.
+Both of these series interact with the state of the underlying contract on
+evenly spaced time steps 'delta t'. The contract is initialized with a reserve
+of Bitcoin and circulation of outstanding Stable Units (presumably distributed
+during a token sale). The reserve holds the Stable Unit pegged to a dollar by
+maintaining a highest bid and lowest ask around a 1 USD. As the BTC price
+and Stable Unit demand during each simulation, the contract intervenes, selling
+Stable Units at the ask price and buying them at the bid price there by hoilding
+it's value within these bounds.
+'''
+
 # Simulation Paramters.
 gflags.DEFINE_integer('total_trials', 1000,
         'The total number of trials per experiment')
