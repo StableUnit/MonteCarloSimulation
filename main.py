@@ -264,7 +264,7 @@ def do_step(params, state):
 
         # The contracts reserve is depleted as it buys back stable units.
         btc_reserve_delta =  su_circulation_delta * \
-                (1 / state.btc_prices[-1]) * (1 / params.highest_bid)
+                (1 / state.btc_prices[-1]) * params.highest_bid
 
     # Updated State Params.
     su_circulation = state.su_circulation[-1] + su_circulation_delta
