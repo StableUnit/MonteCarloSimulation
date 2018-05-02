@@ -58,7 +58,7 @@ gflags.DEFINE_boolean('do_rebase', False,
         'The contract rebases supply after each step')
 
 class Params:
-    """Params hold a set of hyper parameters relevant to a simulation trial.
+    """Params hold a set of hyper parameters relevant to a simulation experiment
 
     Attributes:
         total_steps (int): The total number of steps per trial.
@@ -123,7 +123,7 @@ class State:
     """
     def __init__(self, params):
         """ Args:
-                params (Class): object carrying hyperparams for trial.
+                params (Class): object carrying hyperparams for experiment.
         """
         self.steps = [0]
         self.btc_reserve = [params.initial_btc_reserve]
@@ -144,6 +144,12 @@ class State:
                ' reserve_ratio ' + "%0.4f" % self.reserve_ratio[-1]
 
 def do_analysis(end_states, params):
+    """ Plots the a histogram over the simulation end states.
+        Args:
+            end_states (list(Class)): List of Object containing the
+                contract states after a trial.
+            params (Class): Object carrying byperparams for the experiment.
+    """
     # Build results.
     reserve_ratio = []
     su_circulation = []
@@ -170,15 +176,15 @@ def do_analysis(end_states, params):
 
     # Final Reserve Ratio Histogram.
     ax2.hist(reserve_ratio, bins=int(math.sqrt(params.total_trials)))
-    ax2.set_title("Reserve Ratio at trial end.")
+    ax2.set_title("Final Reserve Ratio.")
 
     # Final Stable Circulation.
     ax3.hist(su_circulation, bins=int(math.sqrt(params.total_trials)))
-    ax3.set_title("% Stable Unit Circulation off base.")
+    ax3.set_title("Final Stable Unit Circulation Drift")
 
     # Final Stable Circulation.
     ax4.hist(btc_price, bins=int(math.sqrt(params.total_trials)))
-    ax4.set_title("% BTC Price Drift off base.")
+    ax4.set_title("Final BTC Price Drift")
 
     plt.show()
 
@@ -219,7 +225,7 @@ def do_step(params, state):
             params (Class): Object containing the contract hyperparameters.
             state (Class): Object containing the contract's current state.
     """
-    # Bitcoin price delta using Geometric Brownian motion (GBM).
+    # Produce a Bitcoin price delta using Geometric Brownian motion (GBM).
     btc_price_delta = state.btc_prices[-1] * \
         (params.btc_price_drift * params.delta_t + \
          params.btc_price_volatility * math.sqrt(params.delta_t) * \
@@ -228,7 +234,7 @@ def do_step(params, state):
     # Next Bitcoin price.
     btc_price = state.btc_prices[-1] + btc_price_delta
 
-    # Stable Unit demand using GBM.
+    # Produce a Stable Unit demand delta using GBM.
     su_demand_delta = state.su_circulation[-1] * \
             (params.su_demand_drift * params.delta_t + \
              params.su_demand_volatility * math.sqrt(params.delta_t) * \
@@ -238,8 +244,7 @@ def do_step(params, state):
     su_cumulative_demand = state.su_cumulative_demand[-1] + su_demand_delta
 
     # At each step we model the change in SU circulation with respect to the
-    # change in demand: dSU = dD * SU.
-    # TODO(const) Model demand brake from arbitragers in secondary markets.
+    # change in demand.
     circulation_delta = su_demand_delta
 
     # Below: Simulate the contract buy-sell behavior outside the spread.
@@ -267,6 +272,8 @@ def do_step(params, state):
     btc_reserve_value = btc_reserve * btc_price
     reserve_ratio = btc_reserve_value / su_circulation
 
+    # If the target reserve ratio pushes above the target. The contract rebases
+    # the ratio of Stable Units by splitting units and increasing supply.
     su_rebase_delta = 0
     if params.do_rebase:
         off_factor = (reserve_ratio-params.target_reserve_ratio) / reserve_ratio
@@ -274,7 +281,7 @@ def do_step(params, state):
             su_rebase_delta = su_circulation * (1 + off_factor) - su_circulation
             su_circulation = su_circulation + su_rebase_delta
 
-    # Update State.
+    # Update the  State.
     state.su_circulation.append(su_circulation)
     state.su_cumulative_demand.append(su_cumulative_demand)
     state.btc_prices.append(btc_price)
@@ -324,7 +331,7 @@ def run_experiment(params):
 
 def main(argv):
     params = Params()
-    print params
+    print ("Experiment Params: " + params.__str__())
     run_experiment(params)
 
 if __name__ == '__main__':
