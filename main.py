@@ -154,12 +154,14 @@ def do_analysis(end_states, params):
     reserve_ratio = []
     su_circulation = []
     btc_price = []
+    all_btc_prices = []
     for state in end_states:
         reserve_ratio.append(state.reserve_ratio[-1])
         su_circulation.append((state.su_circulation[-1] -\
                 state.su_circulation[0])/ state.su_circulation[0])
         btc_price.append((state.btc_prices[-1] - state.btc_prices[0]) /\
                 state.btc_prices[1])
+        all_btc_prices.append(state.btc_prices)
     reserve_ratio = np.asarray(reserve_ratio)
     su_circulation = np.asarray(su_circulation)
     btc_price = np.asarray(btc_price)

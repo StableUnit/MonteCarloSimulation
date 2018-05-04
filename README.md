@@ -71,7 +71,7 @@ Brownian Motion timeseries:
 
 The first of these series, the bitcoin price, is required in this simulation 
 because it is being held by the contract reserve --used as the method of 
-exchange. It's price with respect to the pegged, i.e the BTC/USD, must be 
+exchange. Its price with respect to the peg, i.e the BTC/USD, must be 
 derived using oracles to determine the bid and ask prices offered by the 
 contract.
 
@@ -120,11 +120,13 @@ Monte Carlo methods are common place tools in statistical finance which allow
 researchers to make empirical estimations of systemic risk, under specific 
 assumptions about the movement and relationships between key system components.
 
-In our case, Risk to Stable Unit system contract can be understood as the 
-likelyhood of undesirable results occuring. We derive estimates of this risk
-through repeatedly simulating the behaviour of the contract and recording 
-results. Aggregations of these samples give us an outcome distribution from
-which we can derive statistics over possible outcomes. For instance, 
+In our case, Risk to the Stable Unit system can be understood as the 
+likelyhood of the contract reserve ratio dropping bellow an undesirable 
+threshold.
+
+We derive estimates of this risk through repeatedly simulating the behaviour of
+the contract and recording samples. Aggregations of these samples give us an 
+outcome distribution from which we can derive statistics. For instance, 
 'Given our assumptions about the behaviour of the Bitcoin price, and Stable 
 Unit demand, there is a 90% chance that the contract reserve ratio will remain 
 above above 0.5 within a years time.
