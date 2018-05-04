@@ -81,11 +81,13 @@ health.
 Geometric Brownian motion Monte Carlo methods are common place in statistical 
 finance since they allow us to make empirical estimations of risk bounds in the 
 system under certain assumptions about the movement of the underlying assets. 
+This is achieved repeated simulation of the contract under the movement from a
+statistical 
 We can use these empirical results to make statements such as 'There is a 90%
-chance that the contract reserve ratio will remain above above 0.5% within the
+chance that the contract reserve ratio will remain above above 0.5 within the
 year under these reasonable assumptions'
 
-It should be noted that There is no perfect method for assessing the risk here 
+It should be noted that there is no perfect method for assessing the risk here 
 because financial data it notorious random, subject to black swan events, 
 and long trail distributions. However, for the purposes of testing the behaviour
 of this system, Monte Carlo methods serve as usefull way of understanding the 
@@ -106,5 +108,10 @@ The contract is parameterized using, 'highest_bid', 'lowest_ask', and
 Stable Units for bitcoin. The lowest ask is the rate the contract offers to sell
 Stable Units for bitcoin. The initial reserve ratio being the ratio between 
 Bitcoin and Stable Units at contract genesis.
+
+# Experiments
+
+
+
 
 

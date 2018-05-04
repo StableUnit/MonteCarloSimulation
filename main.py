@@ -156,10 +156,13 @@ def do_analysis(end_states, params):
     btc_price = []
     for state in end_states:
         reserve_ratio.append(state.reserve_ratio[-1])
-        su_circulation.append((state.su_circulation[-1] - \
-                state.su_circulation[0]) / state.su_circulation[0] )
-        btc_price.append((state.btc_prices[-1] - \
-                state.btc_prices[0]) / state.btc_prices[0])
+        su_circulation.append((state.su_circulation[-1] -\
+                state.su_circulation[0])/ state.su_circulation[0])
+        btc_price.append((state.btc_prices[-1] - state.btc_prices[0]) /\
+                state.btc_prices[1])
+    reserve_ratio = np.asarray(reserve_ratio)
+    su_circulation = np.asarray(su_circulation)
+    btc_price = np.asarray(btc_price)
 
     # Produce Result Plot
     f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(10, 10))
@@ -167,23 +170,39 @@ def do_analysis(end_states, params):
 
     # Plot Params.
     props = dict(boxstyle='round', facecolor='white', alpha=0.0)
-    ax1.text(0.05, 0.95, experiment_string, transform=ax1.transAxes, fontsize=14,
-        verticalalignment='top', bbox=props)
+    ax1.text(0.05, 0.95, experiment_string, transform=ax1.transAxes, \
+            fontsize=14, verticalalignment='top', bbox=props)
     ax1.get_xaxis().set_visible(False)
     ax1.get_yaxis().set_visible(False)
     ax1.axis('off')
     ax1.set_title('Experiment Params')
 
     # Final Reserve Ratio Histogram.
-    ax2.hist(reserve_ratio, bins=int(math.sqrt(params.total_trials)))
-    ax2.set_title("Final Reserve Ratio.")
+    ax2.hist(reserve_ratio, bins=int(math.sqrt(params.total_trials)), \
+        color='c', edgecolor='k', alpha=0.65)
+    ax2.axvline(reserve_ratio.mean(), color='r', linestyle='dashed', \
+            label='mean', linewidth=2)
+    ax2.axvline(np.median(reserve_ratio), color='b', linestyle='dashed', \
+            label='median', linewidth=2)
+    ax2.set_title('Final Reserve Ratio.')
+    ax2.legend()
 
     # Final Stable Circulation.
-    ax3.hist(su_circulation, bins=int(math.sqrt(params.total_trials)))
+    ax3.hist(su_circulation, bins=int(math.sqrt(params.total_trials)), \
+            color='c',edgecolor='k', alpha=0.65)
+    ax3.axvline(su_circulation.mean(), color='r', linestyle='dashed', \
+            label='mean', linewidth=2)
+    ax3.axvline(np.median(su_circulation), color='b', linestyle='dashed', \
+            label='median', linewidth=2)
     ax3.set_title("Final Stable Unit Circulation Drift")
 
     # Final Stable Circulation.
-    ax4.hist(btc_price, bins=int(math.sqrt(params.total_trials)))
+    ax4.hist(btc_price, bins=int(math.sqrt(params.total_trials)), \
+            color='c',edgecolor='k', alpha=0.65)
+    ax4.axvline(btc_price.mean(), color='r', linestyle='dashed',
+            label='mean', linewidth=2)
+    ax4.axvline(np.median(btc_price), color='b', linestyle='dashed', \
+            label='median', linewidth=2)
     ax4.set_title("Final BTC Price Drift")
 
     plt.show()
