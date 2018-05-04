@@ -11,7 +11,7 @@ python main.py --flagfile=tests/su_black_swan.txt
 
 Stable Unit (SU) is a digital token designed to maintain a 1:1 peg to the US 
 dollar. The system will be fully decentralized --running via smart contract on a
-Bitcoin side chain-- and have its stability maintained using a non-fiat reserve. 
+Bitcoin side chain-- and have its stability maintained using a non-fiat reserve.
 The contract begins with a market cap which is fully collateralized by its 
 Bitcoin reserve but eventually transitions into a highly liquid system dependent
 on bonds as its market grows.
@@ -28,7 +28,7 @@ a delta offset from the peg -- buyers can attain SU through the contract at a
 price greater than a dollar and redeem them through the contract at a price 
 lower than a dollar. 
 
-In effect, the contract acts as market maker, which can adjust it's risk by 
+In effect, the contract acts as a market maker, which can adjust it's risk by 
 adjusting the spread between the lowest bid and highest ask. As prices rise and
 fall on the exterior market the contract profits. During periods of high 
 volatility, revenue from this bid/ask spread is deposited into contract's 
@@ -38,7 +38,7 @@ further at a constant reserve ratio.
 # Reserve Ratio
 
 In the beginning, while the Stable Unit economy is small, the price band 
-(spread) surrounding the stable price tight and the contract is fully backed
+(spread) surrounding the stable price is tight and the contract is fully backed
 at target reserve ratio of 1:1. This effectively shields the contract 
 from risk but limits the possible quantity of Stable Units in incirculation.
 As the market grows however, the reserve ratio decreases and the the bid-ask 
@@ -48,6 +48,12 @@ reserve.
 
 # Bond Mechanism
 
+This mechanism itself has risks which is why we employ additional stabalization 
+mechanisms which come into play once the first stop gap has been broken. 
+Although these methods are not tested here, the real contract will employ 
+selling of bonds, fund parking, and share dilution to maintain the contract 
+health. 
+
 The Bitcoin reserve is itself subject to it's own risk, and the overarching 
 goal of the Stable Unit token is to remove all dependences on secondary 
 markets. Because of this, as the system grows, we reduce the dependence of 
@@ -56,61 +62,81 @@ for bonds.
 
 # Simulation Parameters
 
-We simulate the behavior of the Stable Unit contract through two Monte Carlo 
-series: 
-    1) The price of Bitcoin held in reserve and 
-    2) The Demand for Stable Units from the Token contract. 
+We simulate the behaviour of this contract useing two non-correlated Geometric 
+Brownian Motion timeseries: 
+1) The Bitcoin price and,
+2) The demand for Stable Units on exterior markets.
 
-Updates to the contract state follows a few simple rules. 
-    1) Buying SU from the contract increases the supply in exchange for Bitcoin.
-    2) Selling SU at the contract decreases the supply at the expense of the
-        Bitcoin held in reserve. 
+# Bitcoin Price
+
+The first of these series, the bitcoin price, is required in this simulation 
+because it is being held by the contract reserve --used as the method of 
+exchange. It's price with respect to the pegged, i.e the BTC/USD, must be 
+derived using oracles to determine the bid and ask prices offered by the 
+contract.
+
+We use the standard GBM model with gaussian Wiener process. At each step we 
+derive the next price using the following GBM step rule:
+
+    dS_{t}=\mu S_{t}\,dt+\sigma S_{t}\,dW_{t}
+
+Additional random walk distributions such as fractional Brownian motion (fBm)
+could be used intead of this simple gaussian Wiener process. For simplicity we
+use this model parameterized by it's dt, sigma and mu. Choices for these 
+parameters are made by fitting this motion to the historical bitcoin price 
+movement. We can additionally select mu (its drift term) to match either an 
+upward or downward trend in the Bitcoin price. 
+
+# Stable Unit Demand
+
+Unlike the Bitcoin price, we model the Stable Unit demand, which  reflects the 
+quantity of Stable Units being demanded on exterior markets. This is more 
+relevant to the contract behaviour because it must engage with exterior markets 
+by buying and selling Stable Units are the contract bid and ask prices. 
+
+Again we use the standard GBM model and a gaussian Wiener process to model 
+demand changes.
+
+# The Contract.
+The two motions interact with the contract according to the following rules:
+
+1) When the Stable Unit demand increases on exterior markets, this reflects
+a price drop which increases above the lowest ask price offered by the contract.
+Traders sell Stable Units on exchanges and buy more from the contract to 
+equalize the price.
+    
+2) When the demand for Stable Units drop on exterior markets the price drops 
+bellow the highest bid offered by the contract. Traders buy Stable Units on 
+exchanges and sell them to the contract to bring the price up.  
     
 When the ratio between SU and BTC held in reserve drops below a threshold value
-we consider this a failure contract, allowing us to probabilistically measure 
-and understand the inherent risks in the system.
+we consider this a failure. By running multiple trials and evalutating the 
+outcomes statististically, we can probabilistically measure the risks to 
+the system.
 
-This mechanism itself has risks which is why we employ additional stabalization 
-mechanisms which come into play once the first stop gap has been broken. 
-Although these methods are not tested here, the real contract will employ 
-selling of bonds, fund parking, and share dilution to maintain the contract 
-health. 
+# Method.
 
-# A Note on the theory.
+Monte Carlo methods are common place tools in statistical finance which allow 
+researchers to make empirical estimations of systemic risk, under specific 
+assumptions about the movement and relationships between key system components.
 
-Geometric Brownian motion Monte Carlo methods are common place in statistical 
-finance since they allow us to make empirical estimations of risk bounds in the 
-system under certain assumptions about the movement of the underlying assets. 
-This is achieved repeated simulation of the contract under the movement from a
-statistical 
-We can use these empirical results to make statements such as 'There is a 90%
-chance that the contract reserve ratio will remain above above 0.5 within the
-year under these reasonable assumptions'
+In our case, Risk to Stable Unit system contract can be understood as the 
+likelyhood of undesirable results occuring. We derive estimates of this risk
+through repeatedly simulating the behaviour of the contract and recording 
+results. Aggregations of these samples give us an outcome distribution from
+which we can derive statistics over possible outcomes. For instance, 
+'Given our assumptions about the behaviour of the Bitcoin price, and Stable 
+Unit demand, there is a 90% chance that the contract reserve ratio will remain 
+above above 0.5 within a years time.
 
-It should be noted that there is no perfect method for assessing the risk here 
-because financial data it notorious random, subject to black swan events, 
-and long trail distributions. However, for the purposes of testing the behaviour
-of this system, Monte Carlo methods serve as usefull way of understanding the 
-different dynamics that may appear.
+It should be noted that there is no perfect method for assessing the risk to 
+financial instruments. Financial data it notorious random and subject to black 
+swan events as a consquence of price distributions which are long tailed and 
+unknown. For the purposes of testing the behaviour of this system, however, 
+Monte Carlo methods serve as usefull way of understanding the different 
+dynamics that may appear and making rough estimations of risk.
 
-# Method
-
-We use a two non-correlated Geometric Brownian Motion timeseries over the 
-bitcoin price and Stable Unit demand. The demand for Stable Units during 
-downturns in the Bitcoin price suggest that these two series should be
-anti-correlated but this caveat has been left out. We parametrize both GBM
-series with a drift and volatility term. We vary these parameters to simulate
-the behaviour during a number of market conditions two show how the system
-reacts.
-
-The contract is parameterized using, 'highest_bid', 'lowest_ask', and 
-'initial_reserve_ratio': The higest bid is the rate the contract offers to redeem
-Stable Units for bitcoin. The lowest ask is the rate the contract offers to sell
-Stable Units for bitcoin. The initial reserve ratio being the ratio between 
-Bitcoin and Stable Units at contract genesis.
-
-# Experiments
-
+# Results.
 
 
 
