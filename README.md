@@ -3,7 +3,10 @@
 # Installation
 pip install -r requirements.txt
 
-# Running.
+# Run through notebook
+jupyter notebook
+
+# Running locally.
 python main.py
 python main.py --flagfile=tests/su_black_swan.txt 
 
