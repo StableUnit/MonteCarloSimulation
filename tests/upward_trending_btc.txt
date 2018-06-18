@@ -1,3 +1,0 @@
---print_step=False
---total_steps=1000
---btc_price_drift=0.001
